@@ -73,56 +73,15 @@ static int xy_to_lin(int x, int y) {
 
 struct huffman_table {
 	uint8_t lengths[16];
-	uint8_t * elements;
+	uint8_t elements[64];
 } huffman_tables[256] = {{0},{0}};
 
 struct stream {
-	uint8_t * data;
+	FILE * file;
+	uint8_t byte;
+	int have;
 	int pos;
 };
-
-static struct stream * read_stream(FILE * f, int len) {
-
-	uint8_t *out = malloc(image_width * image_height * 3);
-	int size = image_width * image_height * 3;
-
-	int off = 0;
-
-	uint8_t data[2];
-	fread(&data, 2, 1, f);
-
-	int i = 0;
-
-	while (1) {
-		if (data[0] == 0xFF) {
-			if (data[1] != 0) {
-				fseek(f, -2, SEEK_CUR);
-				break;
-			}
-			out[off] = data[0];
-			off++;
-			i+= 2;
-			fread(&data, 2, 1, f);
-		} else {
-			out[off] = data[0];
-			off++;
-			i++;
-			data[0] = data[1];
-			fread(&data[1], 1, 1, f);
-		}
-
-		if (off >= size-1) {
-			size *= 2;
-			out = realloc(out, size);
-		}
-	}
-
-	struct stream * st = malloc(sizeof(struct stream));
-	st->pos = 0;
-	st->data = out;
-
-	return st;
-}
 
 static void define_quant_table(FILE * f, int len) {
 
@@ -193,17 +152,16 @@ static void define_huffman_table(FILE * f, int len) {
 			required += lengths[i];
 		}
 
-		uint8_t * elements = malloc(sizeof(uint8_t) * required);
+		fprintf(stderr, "need %d elements\n", required);
 		int o = 0;
 		for (int i = 0; i < 16; ++i) {
 			int l = lengths[i];
-			fread(&elements[o], l, 1, f);
+			fread(&huffman_tables[hdr].elements[o], l, 1, f);
 			o += l;
 			len -= l;
 		}
 
 		memcpy(huffman_tables[hdr].lengths, lengths, 16);
-		huffman_tables[hdr].elements = elements;
 	}
 
 	if (len > 0) {
@@ -240,7 +198,22 @@ static void add_zigzag(struct idct * self, int zi, int coeff) {
 }
 
 static int get_bit(struct stream * st) {
-	uint8_t b = st->data[st->pos >> 3];
+	while ((st->pos >> 3) >= st->have) {
+		int t = fgetc(st->file);
+		if (t < 0) {
+			st->byte = 0;
+		} else {
+			st->byte = t;
+		}
+		if (st->byte == 0xFF) {
+			int tmp = fgetc(st->file);
+			if (tmp != 0) {
+				st->byte = 0;
+			}
+		}
+		st->have++;
+	}
+	uint8_t b = st->byte;
 	int s = 7 - (st->pos & 0x7);
 	st->pos += 1;
 	return (b >> s) & 1;
@@ -305,9 +278,9 @@ static struct idct * build_matrix(struct idct * i, struct stream * st, int idx, 
 
 static void set_pixel(int x, int y, uint32_t color) {
 	if ((x < image_width) && (y < image_height)) {
-		output[y * image_width * 3 + x * 3 + 0] = (color & 0xFF0000) >> 16;
-		output[y * image_width * 3 + x * 3 + 1] = (color & 0xFF00) >> 8;
-		output[y * image_width * 3 + x * 3 + 2] = (color & 0xFF) >> 0;
+		output[(image_height - y - 1) * image_width * 3 + x * 3 + 2] = (color & 0xFF0000) >> 16;
+		output[(image_height - y - 1) * image_width * 3 + x * 3 + 1] = (color & 0xFF00) >> 8;
+		output[(image_height - y - 1) * image_width * 3 + x * 3 + 0] = (color & 0xFF) >> 0;
 	}
 }
 
@@ -329,7 +302,9 @@ static void start_of_scan(FILE * f, int len) {
 	/* Skip header */
 	fseek(f, len, SEEK_CUR);
 
-	struct stream * st = read_stream(f, len);
+	struct stream _st = {0};
+	struct stream * st = &_st;
+	st->file = f;
 
 	int old_lum = 0;
 	int old_crd = 0;
@@ -346,8 +321,7 @@ static void start_of_scan(FILE * f, int len) {
 		}
 	}
 
-	free(st->data);
-	free(st);
+	//free(st->data);
 
 	if (len > 0) {
 		fseek(f, len, SEEK_CUR);
@@ -401,13 +375,20 @@ int main(int argc, char * argv[]) {
 		}
 	}
 
-	for (int i = 0; i < 256; ++i) {
-		if (huffman_tables[i].elements) {
-			free(huffman_tables[i].elements);
-		}
-	}
+	FILE * out = fopen("out.tga","w");
 
-	FILE * out = fopen("out.data","w");
+	struct {
+		uint8_t a, b, c;
+		uint16_t d, e;
+		uint8_t f;
+		uint16_t g, h, i, j;
+		uint8_t k, l;
+	} __attribute__((packed)) header = {
+		0, 0, 2, 0, 0, 0, 0, 0,
+		image_width, image_height, 24, 0
+	};
+
+	fwrite(&header, sizeof(header), 1, out);
 	fwrite(output, image_width * image_height * 3, 1, out);
 	fclose(out);
 
