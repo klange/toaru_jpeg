@@ -96,7 +96,7 @@ static int xy_to_lin(int x, int y) {
 
 struct huffman_table {
 	uint8_t lengths[16];
-	uint8_t elements[64];
+	uint8_t elements[256]; /* Can't possibly be bigger than that */
 } huffman_tables[256] = {{0},{0}};
 
 struct stream {
