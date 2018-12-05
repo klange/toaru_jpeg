@@ -1,2 +1,2 @@
 LDFLAGS=-lm
-oh-god-jpeg: oh-god-jpeg.c
+toaru_jpeg: toaru_jpeg.c

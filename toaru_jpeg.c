@@ -152,7 +152,6 @@ static void define_huffman_table(FILE * f, int len) {
 			required += lengths[i];
 		}
 
-		fprintf(stderr, "need %d elements\n", required);
 		int o = 0;
 		for (int i = 0; i < 16; ++i) {
 			int l = lengths[i];
