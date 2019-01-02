@@ -1,4 +1,5 @@
 toaru_jpeg
+*.o
 *.data
 *.swp
 *.tga
