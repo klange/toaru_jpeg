@@ -53,6 +53,7 @@
 #endif
 
 static sprite_t * sprite = NULL;
+static int components = 0;
 
 /* Byte swap short (because JPEG uses big-endian values) */
 static void swap16(uint16_t * val) {
@@ -150,6 +151,8 @@ static void baseline_dct(FILE * f, int len) {
 	sprite->masks = NULL;
 	sprite->alpha = 0;
 	sprite->blank = 0;
+
+	components = dct.components;
 
 	TRACE("Loading quantization mappings...");
 	for (int i = 0; i < dct.components; ++i) {
@@ -405,22 +408,21 @@ static void start_of_scan(FILE * f, int len) {
 	int old_lum = 0;
 	int old_crd = 0;
 	int old_cbd = 0;
-	for (int y = 0; y < sprite->height / 8 + !!(sprite->height & 0xf); ++y) {
+	for (int y = 0; y < sprite->height / 8 + !!(sprite->height & 0x7); ++y) {
 		TRACE("Star row %d", y );
-		for (int x = 0; x < sprite->width / 8 + !!(sprite->width & 0xf); ++x) {
-			if (y >= 134) {
-				TRACE("Start col %d", x);
-			}
+		for (int x = 0; x < sprite->width / 8 + !!(sprite->width & 0x7); ++x) {
 
 			/* Build matrices */
 			struct idct matL, matCr, matCb;
 			build_matrix(&matL,  st, 0, quant[quant_mapping[0]], old_lum, &old_lum);
-			build_matrix(&matCb, st, 1, quant[quant_mapping[1]], old_cbd, &old_cbd);
-			build_matrix(&matCr, st, 1, quant[quant_mapping[2]], old_crd, &old_crd);
-
-			if (y >= 134) {
-				TRACE("Draw col %d", x);
+			if (components == 1) {
+				memset(&matCr, 0, sizeof(struct idct));
+				memset(&matCb, 0, sizeof(struct idct));
+			} else {
+				build_matrix(&matCb, st, 1, quant[quant_mapping[1]], old_cbd, &old_cbd);
+				build_matrix(&matCr, st, 1, quant[quant_mapping[2]], old_crd, &old_crd);
 			}
+
 			draw_matrix(x, y, &matL, &matCb, &matCr);
 		}
 	}
