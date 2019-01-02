@@ -393,6 +393,19 @@ static void draw_matrix(int x, int y, struct idct * L, struct idct * cb, struct 
 	}
 }
 
+static void draw_matrix_gray(int x, int y, struct idct * L) {
+	for (int yy = 0; yy < 8; ++yy) {
+		for (int xx = 0; xx < 8; ++xx) {
+			int o = xy_to_lin(xx,yy);
+			float Y = L->base[o];
+			float g = (Y - 0.144 * Y - 0.229 * Y) / 0.587;
+			uint8_t l = clamp(g + 128);
+			uint32_t c = 0xFF000000 | (l << 16) | (l << 8) | l;
+			set_pixel((x * 8 + xx), (y * 8 + yy), c);
+		}
+	}
+}
+
 static void start_of_scan(FILE * f, int len) {
 
 	TRACE("Reading image data");
@@ -405,25 +418,30 @@ static void start_of_scan(FILE * f, int len) {
 	_st.file = f;
 	struct stream * st = &_st;
 
-	int old_lum = 0;
-	int old_crd = 0;
-	int old_cbd = 0;
-	for (int y = 0; y < sprite->height / 8 + !!(sprite->height & 0x7); ++y) {
-		TRACE("Star row %d", y );
-		for (int x = 0; x < sprite->width / 8 + !!(sprite->width & 0x7); ++x) {
+	if (components == 1) {
+		int old_lum = 0;
+		for (int y = 0; y < sprite->height / 8 + !!(sprite->height & 0x7); ++y) {
+			for (int x = 0; x < sprite->width / 8 + !!(sprite->width & 0x7); ++x) {
+				struct idct matL, matCr, matCb;
+				build_matrix(&matL,  st, 0, quant[quant_mapping[0]], old_lum, &old_lum);
+				draw_matrix_gray(x,y,&matL);
+			}
+		}
+	} else {
 
-			/* Build matrices */
-			struct idct matL, matCr, matCb;
-			build_matrix(&matL,  st, 0, quant[quant_mapping[0]], old_lum, &old_lum);
-			if (components == 1) {
-				memset(&matCr, 0, sizeof(struct idct));
-				memset(&matCb, 0, sizeof(struct idct));
-			} else {
+		int old_lum = 0;
+		int old_crd = 0;
+		int old_cbd = 0;
+		for (int y = 0; y < sprite->height / 8 + !!(sprite->height & 0x7); ++y) {
+			for (int x = 0; x < sprite->width / 8 + !!(sprite->width & 0x7); ++x) {
+				/* Build matrices */
+				struct idct matL, matCr, matCb;
+				build_matrix(&matL,  st, 0, quant[quant_mapping[0]], old_lum, &old_lum);
 				build_matrix(&matCb, st, 1, quant[quant_mapping[1]], old_cbd, &old_cbd);
 				build_matrix(&matCr, st, 1, quant[quant_mapping[2]], old_crd, &old_crd);
-			}
 
-			draw_matrix(x, y, &matL, &matCb, &matCr);
+				draw_matrix(x, y, &matL, &matCb, &matCr);
+			}
 		}
 	}
 
